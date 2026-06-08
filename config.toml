@@ -1,0 +1,14 @@
+[theme]
+# Pure OLED Crystal Black Background
+backgroundColor = "#000000"
+
+# Barely-elevated black for menus and input boxes
+secondaryBackgroundColor = "#0a0a0a"
+
+# Crisp White for all labels, text, and titles
+textColor = "#ffffff"
+
+# Stripping out the blue accent - making highlights pure white
+primaryColor = "#ffffff"
+
+font = "monospace"
