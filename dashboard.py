@@ -163,7 +163,7 @@ with tab_home:
         st.button("THEME", on_click=toggle_theme, key="btn_theme")
     with ctrl_col3:
         st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 RE-FETCH", key="btn_refetch"):
+        if st.button("RE-FETCH", key="btn_refetch"):
             subprocess.run([sys.executable, "news_fetcher.py"])
             subprocess.run([sys.executable, "sentiment_analyzer.py"])
             st.rerun()
@@ -190,10 +190,29 @@ with tab_home:
     total_news = len(filtered_articles)
     avg_score = sum([item.get("score", 0) for item in scored_articles]) / len(scored_articles) if scored_articles else 0.0
 
-    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric(label="HEADLINES PROCESSED", value=total_news)
     kpi2.metric(label="MARKET PULSE SCORE", value=f"{avg_score:.2f}", delta="📈 BULLISH" if avg_score > 0.05 else "📉 BEARISH")
     kpi3.metric(label="ACTIVE TARGET", value=selected_ticker)
+    if selected_ticker != "ALL Tickers":
+        try:
+            stock = yf.Ticker(selected_ticker)
+            hist = stock.history(period="2d") 
+            if len(hist) >= 2:
+                current_price = hist['Close'].iloc[-1]
+                prev_close = hist['Close'].iloc[-2]
+                price_change = current_price - prev_close
+                currency = "₹" if ".NS" in selected_ticker else "$"
+                kpi4.metric(label="LIVE ASSET PRICE", value=f"{currency}{current_price:.2f}", delta=f"{currency}{price_change:.2f}")
+            elif len(hist) == 1:
+                current_price = hist['Close'].iloc[-1]
+                kpi4.metric(label="LIVE ASSET PRICE", value=f"{current_price:.2f}")
+            else:
+                kpi4.metric(label="LIVE ASSET PRICE", value="AWAITING DATA")
+        except Exception:
+            kpi4.metric(label="LIVE ASSET PRICE", value="API ERROR")
+    else:
+        kpi4.metric(label="LIVE ASSET PRICE", value="SELECT TICKER")
 
     st.markdown("---")
     left_panel, right_panel = st.columns([2, 1])
@@ -254,42 +273,68 @@ with tab_analytics:
     search_ticker = st.selectbox("SELECT TARGET ASSET:", ["AAPL", "MSFT", "TSLA", "NVDA", "AMZN", "KOTAKBANK.NS"])
     
     if search_ticker:
+        # 1. Fetch Sentiment News
         ticker_articles = [a for a in articles if a.get("ticker") == search_ticker and a.get("score") is not None]
+        
         if len(ticker_articles) < 2:
             st.info("Awaiting more database records to populate sentiment visuals.")
         else:
-            chronological_data = sorted(ticker_articles, key=lambda x: str(x.get("time_published", "")))
-            raw_df = pd.DataFrame({
-                "Time": pd.to_datetime([item.get("time_published") for item in chronological_data], errors="coerce"),
-                "Sentiment Index": [item.get("score", 0) for item in chronological_data]
-            }).dropna(subset=["Time"])
-
-            alignment_df = raw_df.groupby(raw_df['Time'].dt.floor('min'))['Sentiment Index'].mean().reset_index()
-            
-            c1, c2 = st.columns(2)
-            with c1:
-                st.markdown(f"##### AGGREGATED SENTIMENT INDEX")
-                fig1 = px.line(alignment_df, x="Time", y="Sentiment Index")
-                fig1.update_traces(line_shape='spline', line_color=c_text, line_width=3, fill='tozeroy', fillcolor='rgba(128, 128, 128, 0.05)')
-                fig1.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
-                    font=dict(color=c_text, size=12, family="Courier New, monospace"),
-                    margin=dict(l=40, r=40, t=20, b=40)
-                )
-                fig1.update_xaxes(showgrid=False, tickfont=dict(color=c_text), title_font=dict(color=c_text))
-                fig1.update_yaxes(showgrid=True, gridcolor=c_grid, tickfont=dict(color=c_text), title_font=dict(color=c_text))
-                st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False}, theme=None)
+            # 2. Fetch Stock Data FIRST (Before drawing any charts)
+            try:
+                stock = yf.Ticker(search_ticker)
+                hist = stock.history(period="5d", interval="1h", prepost=True)
                 
-            with c2:
-                st.markdown(f"#####  REAL-TIME PRICE ACTION (OHLC)")
-                try:
-                    stock = yf.Ticker(search_ticker)
-                    hist = stock.history(period="1mo")
+                if hist.empty:
+                    st.warning("Live market data temporarily unavailable from Yahoo Finance API.")
+                else:
+                    hist.reset_index(inplace=True)
+                    time_col = 'Datetime' if 'Datetime' in hist.columns else 'Date'
                     
-                    if not hist.empty:
-                        hist.reset_index(inplace=True)
+                    # Strip timezone info from Stock Data
+                    if hist[time_col].dt.tz is not None:
+                        hist[time_col] = hist[time_col].dt.tz_localize(None)
+
+                    # 3. Process Sentiment Data
+                    chronological_data = sorted(ticker_articles, key=lambda x: str(x.get("time_published", "")))
+                    raw_df = pd.DataFrame({
+                        "Time": pd.to_datetime([item.get("time_published") for item in chronological_data], errors="coerce"),
+                        "Sentiment Index": [item.get("score", 0) for item in chronological_data]
+                    }).dropna(subset=["Time"])
+                    
+                    # Strip timezone info from News Data to match
+                    if raw_df['Time'].dt.tz is not None:
+                        raw_df['Time'] = raw_df['Time'].dt.tz_localize(None)
+                        
+                    alignment_df = raw_df.groupby(raw_df['Time'].dt.floor('h'))['Sentiment Index'].mean().reset_index()
+
+                    # 4. CALCULATE THE MASTER TIME WINDOW
+                    now = pd.Timestamp.utcnow().tz_localize(None)
+                    five_days_ago = now - pd.Timedelta(days=5)
+                    alignment_df = alignment_df[(alignment_df['Time'] >= five_days_ago)]
+                    hist = hist[(hist[time_col] >= five_days_ago)]
+                    master_x_range = [five_days_ago, now]
+
+                    # 5. Draw the Synchronized Charts
+                    c1, c2 = st.columns(2)
+                    
+                    with c1:
+                        st.markdown(f"##### 📊 AGGREGATED SENTIMENT INDEX")
+                        fig1 = px.line(alignment_df, x="Time", y="Sentiment Index")
+                        fig1.update_traces(line_shape='spline', line_color=c_text, line_width=3, fill='tozeroy', fillcolor='rgba(128, 128, 128, 0.05)')
+                        fig1.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+                            font=dict(color=c_text, size=12, family="Courier New, monospace"),
+                            margin=dict(l=40, r=40, t=20, b=40)
+                        )
+                        # APPLY THE TIME LOCK
+                        fig1.update_xaxes(range=master_x_range, showgrid=False, tickfont=dict(color=c_text), title_font=dict(color=c_text))
+                        fig1.update_yaxes(showgrid=True, gridcolor=c_grid, tickfont=dict(color=c_text), title_font=dict(color=c_text))
+                        st.plotly_chart(fig1, use_container_width=True, config={'displayModeBar': False}, theme=None)
+                        
+                    with c2:
+                        st.markdown(f"##### 💹 REAL-TIME PRICE ACTION (OHLC)")
                         fig2 = go.Figure(data=[go.Candlestick(
-                            x=hist['Date'], open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close'],
+                            x=hist[time_col], open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close'],
                             increasing_line_color='#10b981', decreasing_line_color='#ef4444'
                         )])
                         fig2.update_layout(
@@ -297,13 +342,13 @@ with tab_analytics:
                             font=dict(color=c_text, size=12, family="Courier New, monospace"),
                             margin=dict(l=40, r=40, t=20, b=40), xaxis_rangeslider_visible=False
                         )
-                        fig2.update_xaxes(showgrid=False, tickfont=dict(color=c_text), title_font=dict(color=c_text))
+                        # APPLY THE TIME LOCK
+                        fig2.update_xaxes(range=master_x_range, showgrid=False, tickfont=dict(color=c_text), title_font=dict(color=c_text))
                         fig2.update_yaxes(showgrid=True, gridcolor=c_grid, tickfont=dict(color=c_text), title_font=dict(color=c_text))
                         st.plotly_chart(fig2, use_container_width=True, config={'displayModeBar': False}, theme=None)
-                    else:
-                        st.info("Live market data temporarily unavailable from Yahoo Finance API.")
-                except Exception as e:
-                    st.error("Failed to connect to real-time market data stream.")
+                        
+            except Exception as e:
+                st.error("Failed to connect to real-time market data stream.")
 # ==========================================
 # 4. GLOBAL FOOTER & SYSTEM REFRESH
 # ==========================================
