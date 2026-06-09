@@ -23,7 +23,7 @@ tickers = {
 selected_ticker = random.choice(list(tickers.keys()))
 company_name = tickers[selected_ticker]
 
-NEWS_API_KEY = "48af6ecbae4141869901fa62944d6981"
+NEWS_API_KEY = "93c030da0080476882719c144cce4013"
 
 print(f"📡 API GATEWAY: Pinging NewsAPI for official [{company_name}] financial headlines...")
 
