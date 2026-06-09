@@ -1,7 +1,10 @@
+
+
 import json
 import datetime
 import random
 import requests
+import urllib.parse
 import database  # Connects to your brand new database.py file
 
 print("🌍 INGESTION FEED: Initializing Dual-Stream Pipeline...")
@@ -20,38 +23,59 @@ tickers = {
 selected_ticker = random.choice(list(tickers.keys()))
 company_name = tickers[selected_ticker]
 
-# Replace this with your actual free API key from NewsAPI.org
-NEWS_API_KEY = "93c030da0080476882719c144cce4013"
+NEWS_API_KEY = "48af6ecbae4141869901fa62944d6981"
 
-print(f"📡 API GATEWAY: Pinging NewsAPI for official [{company_name}] headlines...")
+print(f"📡 API GATEWAY: Pinging NewsAPI for official [{company_name}] financial headlines...")
 
-   
+selected_stories = [] 
+
 try:
-    strict_query = f'"{company_name}"'
+    # Calculate exactly today and 2 days ago for a strict real-time window
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    yesterday = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%Y-%m-%d')
     
-    url = f"https://newsapi.org/v2/everything?qInTitle={strict_query}&language=en&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
+    # --- THE STRICT FINANCIAL FILTER ---
+    # Force the API to only return articles that mention the company AND a finance keyword
+    raw_query = f'("{company_name}" OR "{selected_ticker}") AND (stock OR shares OR earnings OR revenue OR dividend OR market)'
+    strict_query = urllib.parse.quote(raw_query)
+    
+    url = f"https://newsapi.org/v2/everything?q={strict_query}&language=en&from={yesterday}&to={today}&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
+    
     response = requests.get(url, timeout=5)
     news_data = response.json()
     
-    if news_data.get("status") == "ok" and news_data.get("totalResults") > 0:
+    if news_data.get("status") == "ok" and news_data.get("totalResults", 0) > 0:
         articles_to_process = news_data["articles"][:10] 
-        selected_stories = []
+        
         for article in articles_to_process:
-            raw_time = article.get("publishedAt", datetime.datetime.now().isoformat())
-            clean_time = raw_time.replace("T", " ").replace("Z", "")[:19]
+            title = article.get("title", "")
+            summary = article.get("description", "")
+            
+            # --- THE STRICT RELEVANCE BARRICADE ---
+            # Convert everything to lowercase for easy matching
+            search_pool = f"{title} {summary}".lower()
+            
+            # Only proceed if the company name OR ticker is actually in the headline/summary
+            if company_name.lower() in search_pool or selected_ticker.lower() in search_pool:
+                
+                # Extract the actual publish time from NewsAPI
+                raw_time = article.get("publishedAt", datetime.datetime.now().isoformat())
+                clean_time = raw_time.replace("T", " ").replace("Z", "")[:19]
 
-            selected_stories.append({
-                "ticker": selected_ticker,
-                "title": article.get("title", f"Latest corporate shift on {selected_ticker}"),
-                "summary": article.get("description", "No summary text provided by publisher stream."),
-                "url": article.get("url", f"https://finance.yahoo.com/quote/{selected_ticker}"),
-                "time_published": clean_time
-            })
+                selected_stories.append({
+                    "ticker": selected_ticker,
+                    "title": title if title else f"Latest corporate shift on {selected_ticker}",
+                    "summary": summary if summary else "No summary text provided by publisher stream.",
+                    "url": article.get("url", f"https://finance.yahoo.com/quote/{selected_ticker}"),
+                    "time_published": clean_time
+                })
+            else:
+                print(f"Filtered out irrelevant article: {title[:30]}...")
     else:
-        raise ValueError("NewsAPI returned empty news array or invalid schema response.")
+        raise ValueError("NewsAPI returned empty news array or no financial matches found.")
         
 except Exception as e:
-    print(f"⚠️ API Fetch delayed or rate-limited. Injecting market pulse baseline...")
+    print(f"⚠️ API Fetch delayed or rate-limited ({e}). Injecting market pulse baseline...")
     selected_story = {
         "ticker": selected_ticker,
         "title": f"Live Tracking: {selected_ticker} liquidity metrics remaining stable.",
@@ -61,6 +85,7 @@ except Exception as e:
     }
     selected_stories.append(selected_story)
 
+# Database Injection Phase
 try:
     conn = database.get_connection()
     cursor = conn.cursor()
@@ -81,23 +106,17 @@ try:
         if cursor.rowcount > 0:
             new_inserts += 1
             
+    conn.commit()
+    
     if new_inserts > 0:
         print(f"✅ SQLITE SUCCESS: Bulk committed {new_inserts} fresh records.")
     else:
-        print(f"🔄 SQLITE SKIP: No new articles published since last check.")
+        print(f"🔄 SQLITE SKIP: No new articles published since last check. Cache preserved.")
         
-    conn.commit()
-    # Check if a new record was added or if it was blocked as a duplicate
-    if cursor.rowcount > 0:
-        print(f"✅ SQLITE SUCCESS: Committed fresh record to database row context.")
-    else:
-        print(f"🔄 SQLITE SKIP: Article duplicate intercepted by database constraints. Cache preserved.")
-        
-    conn.commit()
-    
 except Exception as db_err:
     print(f"❌ DATABASE EXCEPTION: Unable to commit transaction. Error: {db_err}")
 finally:
-    conn.close()
+    if 'conn' in locals():
+        conn.close()
 
 print(f"🏁 PIPELINE RUN COMPLETE: State tracking synchronized.")
