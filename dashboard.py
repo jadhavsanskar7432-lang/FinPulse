@@ -174,16 +174,18 @@ with tab_home:
         sub_kpi3.metric(label="MARKET PULSE SCORE", value=f"{avg_score:.2f}", delta="📈 BULLISH" if avg_score > 0.05 else "📉 BEARISH")
         
         if selected_ticker != "ALL Tickers":
-            hist = fetch_stock_history(selected_ticker, period="2d", interval="1d")
+            hist = fetch_stock_history(selected_ticker, period="5d", interval="1d")
             if not hist.empty and len(hist) >= 2:
                 current_price = hist['Close'].iloc[-1]
                 prev_close = hist['Close'].iloc[-2]
                 price_change = current_price - prev_close
                 currency = "₹" if ".NS" in selected_ticker else "$"
+                
                 sub_kpi4.metric(label="LIVE ASSET PRICE", value=f"{currency}{current_price:.2f}", delta=f"{currency}{price_change:.2f}")
             elif not hist.empty and len(hist) == 1:
                 current_price = hist['Close'].iloc[-1]
-                sub_kpi4.metric(label="LIVE ASSET PRICE", value=f"{current_price:.2f}")
+                currency = "₹" if ".NS" in selected_ticker else "$" # <-- Added the currency check here!
+                sub_kpi4.metric(label="LIVE ASSET PRICE", value=f"{currency}{current_price:.2f}")
             else:
                 sub_kpi4.metric(label="LIVE ASSET PRICE", value="AWAITING DATA")
         else:
@@ -215,33 +217,44 @@ with tab_home:
     
     for idx, t in enumerate(all_trackers):
         with tape_cols[idx]:
+            # 1. Grab Sentiment
             t_arts = [a for a in articles if a.get("ticker") == t and a.get("score") is not None]
             t_sent = sum(a['score'] for a in t_arts) / len(t_arts) if t_arts else 0.0
             
+            # 2. Grab Stock Data & Clean Sneaky NaNs locally
             stock_data = fetch_stock_history(t, period="5d", interval="1d")
-            if not stock_data.empty and len(stock_data) >= 2:
-                c_val = stock_data['Close'].iloc[-1]
-                p_val = stock_data['Close'].iloc[-2]
-                pct_diff = ((c_val - p_val) / p_val) * 100
-                cur = "₹" if ".NS" in t else "$"
-                price_display = f"{cur}{c_val:.2f}"
-                pct_color = "#10b981" if pct_diff > 0 else "#ef4444"
-                pct_sign = "+" if pct_diff > 0 else ""
-                pct_display = f"<span style='color: {pct_color}; font-weight:bold; font-size:14px;'>{pct_sign}{pct_diff:.2f}%</span>"
-            else:
-                price_display = "N/A"
-                pct_display = f"<span style='color: {c_subtext};'>--%</span>"
-                pct_diff = 0.0
+            
+            # Create a fallback state
+            c_val, pct_diff = 0.0, 0.0
+            price_display, pct_display = "N/A", f"<span style='color: {c_subtext};'>--%</span>"
+            
+            if not stock_data.empty and 'Close' in stock_data.columns:
+                # Force drop any NaN values right before doing the math
+                clean_data = stock_data.dropna(subset=['Close'])
+                
+                if len(clean_data) >= 2:
+                    c_val = clean_data['Close'].iloc[-1]
+                    p_val = clean_data['Close'].iloc[-2]
+                    pct_diff = ((c_val - p_val) / p_val) * 100
+                    
+                    cur = "₹" if ".NS" in t else "$"
+                    price_display = f"{cur}{c_val:.2f}"
+                    pct_color = "#10b981" if pct_diff > 0 else "#ef4444"
+                    pct_sign = "+" if pct_diff > 0 else ""
+                    pct_display = f"<span style='color: {pct_color}; font-weight:bold; font-size:14px;'>{pct_sign}{pct_diff:.2f}%</span>"
 
+            # 3. Format Sentiment
             sent_color = "#10b981" if t_sent > 0 else ("#ef4444" if t_sent < 0 else c_subtext)
             sent_sign = "+" if t_sent > 0 else ""
             
+            # 4. Warnings
             warning_html = ""
             if pct_diff < -0.5 and t_sent > 0.15:
                 warning_html = "<div style='border: 1px solid #eab308; color: #eab308; background: rgba(234, 179, 8, 0.05); font-size: 10px; font-weight: bold; padding: 4px; margin-top: 8px; border-radius: 4px; text-align: center;'>⚠️ News positive, price falling</div>"
             elif pct_diff > 0.5 and t_sent < -0.15:
                 warning_html = "<div style='border: 1px solid #eab308; color: #eab308; background: rgba(234, 179, 8, 0.05); font-size: 10px; font-weight: bold; padding: 4px; margin-top: 8px; border-radius: 4px; text-align: center;'>⚠️ News negative, price rising</div>"
 
+            # 5. Render UI
             st.markdown(
                 f"""
                 <div class="divergence-card">
@@ -505,6 +518,7 @@ with tab_strategy:
     st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
     
     st.markdown("### Algorithmic Decision Support")
+
     # --- PORTFOLIO AGGREGATION ENGINE ---
     signal_counts = {"STRONG BUY": 0, "BUY": 0, "HOLD": 0, "SELL": 0, "STRONG SELL": 0}
     
@@ -513,14 +527,19 @@ with tab_strategy:
         curr_sent = sum(a['score'] for a in t_arts) / len(t_arts) if t_arts else 0.0
         hist_agg = fetch_stock_history(t, period="5d", interval="1d")
         
-        if not hist_agg.empty and len(hist_agg) >= 2:
-            c_val_agg = hist_agg['Close'].iloc[-1]
-            p_val_agg = hist_agg['Close'].iloc[-2]
-            pct_diff_agg = ((c_val_agg - p_val_agg) / p_val_agg) * 100
-            sig_agg, _, _ = get_trade_signal(curr_sent, pct_diff_agg)
-            signal_counts[sig_agg] += 1
+        # 🛡️ THE FIX: Drop NaNs locally for the donut chart
+        if not hist_agg.empty and 'Close' in hist_agg.columns:
+            clean_agg = hist_agg.dropna(subset=['Close'])
+            if len(clean_agg) >= 2:
+                c_val_agg = clean_agg['Close'].iloc[-1]
+                p_val_agg = clean_agg['Close'].iloc[-2]
+                pct_diff_agg = ((c_val_agg - p_val_agg) / p_val_agg) * 100
+                sig_agg, _, _ = get_trade_signal(curr_sent, pct_diff_agg)
+                signal_counts[sig_agg] += 1
+            else:
+                signal_counts["HOLD"] += 1
         else:
-            signal_counts["HOLD"] += 1 # Default to hold if API data is missing
+            signal_counts["HOLD"] += 1 
 
     # Filter out empty categories for a cleaner chart
     labels = [k for k, v in signal_counts.items() if v > 0]
@@ -530,18 +549,19 @@ with tab_strategy:
 
     col_pie, col_desc = st.columns([1.5, 2])
     
-    with col_pie:
-        fig_donut = go.Figure(data=[go.Pie(
-            labels=labels, values=values, hole=0.6, 
-            marker=dict(colors=pie_colors, line=dict(color=c_bg, width=2)),
-            textinfo='label+percent', textfont=dict(color=c_text, size=12, family="Courier New")
-        )])
-        fig_donut.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(t=20, b=20, l=20, r=20), height=250, showlegend=False,
-            annotations=[dict(text='MARKET<br>BREADTH', x=0.5, y=0.5, font_size=14, font_color=c_subtext, showarrow=False, font_family="Courier New")]
-        )
-        st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
+    if labels: # Prevent empty pie chart error
+        with col_pie:
+            fig_donut = go.Figure(data=[go.Pie(
+                labels=labels, values=values, hole=0.6, 
+                marker=dict(colors=pie_colors, line=dict(color=c_bg, width=2)),
+                textinfo='label+percent', textfont=dict(color=c_text, size=12, family="Courier New")
+            )])
+            fig_donut.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                margin=dict(t=20, b=20, l=20, r=20), height=250, showlegend=False,
+                annotations=[dict(text='MARKET<br>BREADTH', x=0.5, y=0.5, font_size=14, font_color=c_subtext, showarrow=False, font_family="Courier New")]
+            )
+            st.plotly_chart(fig_donut, use_container_width=True, config={'displayModeBar': False})
         
     with col_desc:
         st.markdown("<div style='margin-top:40px;'></div>", unsafe_allow_html=True)
@@ -551,69 +571,77 @@ with tab_strategy:
         st.markdown(f"<span style='color:#ef4444; font-weight:bold;'>📉 Liquidate (Sell):</span> {signal_counts['STRONG SELL'] + signal_counts['SELL']} Assets", unsafe_allow_html=True)
 
     st.markdown("---")
-    # ------------------------------------
+    
     target = st.selectbox("Select Asset for Signal Analysis:", all_trackers, key="strat_ticker")
     
     if target:
-        # Grab the data
+        # 1. Grab the data
         t_arts = [a for a in articles if a.get("ticker") == target and a.get("score") is not None]
         curr_sent = sum(a['score'] for a in t_arts) / len(t_arts) if t_arts else 0.0
         
         hist = fetch_stock_history(target, period="5d", interval="1d")
         
-        if not hist.empty and len(hist) >= 2:
-            c_val = hist['Close'].iloc[-1]
-            p_val = hist['Close'].iloc[-2]
-            pct_diff = ((c_val - p_val) / p_val) * 100
+        # 🛡️ THE FIX: Drop NaNs locally for the specific target
+        if not hist.empty and 'Close' in hist.columns:
+            clean_hist = hist.dropna(subset=['Close'])
             
-            # Run the Engine
-            signal, color, reasoning = get_trade_signal(curr_sent, pct_diff)
-            
-            # Build the UI
-            st.markdown(
-                f"""
-                <div style="background-color: {c_card}; border-left: 8px solid {color}; border-radius: 8px; padding: 25px; margin-bottom: 25px; border-top: 1px solid {c_border}; border-right: 1px solid {c_border}; border-bottom: 1px solid {c_border}; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                    <h5 style="color: {c_subtext}; margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">SYSTEM RECOMMENDATION</h5>
-                    <h1 style="color: {color}; margin: 5px 0; font-size: 42px; font-weight: 900;">{signal}</h1>
-                    <p style="color: {c_text}; margin: 10px 0 0 0; font-size: 16px;"><strong>Logic:</strong> {reasoning}</p>
-                </div>
-                """, unsafe_allow_html=True
-            )
-            st.markdown("##### 📈 Signal Validation Chart")
-            
-            # 1. Format the time column to prevent timezone errors
-            hist.reset_index(inplace=True)
-            time_col = 'Datetime' if 'Datetime' in hist.columns else 'Date'
-            if hist[time_col].dt.tz is not None:
-                hist[time_col] = hist[time_col].dt.tz_localize(None)
+            if len(clean_hist) >= 2:
+                c_val = clean_hist['Close'].iloc[-1]
+                p_val = clean_hist['Close'].iloc[-2]
+                pct_diff = ((c_val - p_val) / p_val) * 100
+                
+                # 2. Run the Engine
+                signal, color, reasoning = get_trade_signal(curr_sent, pct_diff)
+                
+                # 3. Build the UI
+                st.markdown(
+                    f"""
+                    <div style="background-color: {c_card}; border-left: 8px solid {color}; border-radius: 8px; padding: 25px; margin-bottom: 25px; border-top: 1px solid {c_border}; border-right: 1px solid {c_border}; border-bottom: 1px solid {c_border}; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                        <h5 style="color: {c_subtext}; margin: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px;">SYSTEM RECOMMENDATION</h5>
+                        <h1 style="color: {color}; margin: 5px 0; font-size: 42px; font-weight: 900;">{signal}</h1>
+                        <p style="color: {c_text}; margin: 10px 0 0 0; font-size: 16px;"><strong>Logic:</strong> {reasoning}</p>
+                    </div>
+                    """, unsafe_allow_html=True
+                )
+                
+                # 4. The Data Breakdown
+                col_s1, col_s2, col_s3 = st.columns(3)
+                col_s1.metric("Current Sentiment", f"{curr_sent:.2f}")
+                col_s2.metric("24h Price Action", f"{pct_diff:.2f}%")
+                col_s3.metric("Data Volume (Confidence)", f"{len(t_arts)} headlines")
+                
+                st.markdown("---")
+                st.markdown("##### 📈 Signal Validation Chart")
+                
+                # 1. Format the time column to prevent timezone errors
+                clean_hist.reset_index(inplace=True)
+                time_col = 'Datetime' if 'Datetime' in clean_hist.columns else 'Date'
+                if clean_hist[time_col].dt.tz is not None:
+                    clean_hist[time_col] = clean_hist[time_col].dt.tz_localize(None)
 
-            # 2. Build the Terminal-Themed Candlestick Chart
-            fig_strat = go.Figure(data=[go.Candlestick(
-                x=hist[time_col], open=hist['Open'], high=hist['High'], low=hist['Low'], close=hist['Close'],
-                increasing_line_color='#10b981', decreasing_line_color='#ef4444',
-                name='Price Action'
-            )])
+                # 2. Build the Terminal-Themed Candlestick Chart
+                fig_strat = go.Figure(data=[go.Candlestick(
+                    x=clean_hist[time_col], open=clean_hist['Open'], high=clean_hist['High'], low=clean_hist['Low'], close=clean_hist['Close'],
+                    increasing_line_color='#10b981', decreasing_line_color='#ef4444',
+                    name='Price Action'
+                )])
 
-            # 3. Apply the custom UI styling
-            fig_strat.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
-                font=dict(color=c_text, size=12, family="Courier New, monospace"),
-                margin=dict(l=40, r=40, t=20, b=40), xaxis_rangeslider_visible=False,
-                height=350,
-                title=dict(text=f"{target} - 5 Day Price Action", font=dict(color=c_subtext, size=14))
-            )
-            fig_strat.update_xaxes(showgrid=False, tickfont=dict(color=c_text))
-            fig_strat.update_yaxes(showgrid=True, gridcolor=c_grid, tickfont=dict(color=c_text))
-            
-            # 4. Render it flawlessly
-            st.plotly_chart(fig_strat, use_container_width=True, config={'displayModeBar': False})
-            
-            # The Data Breakdown
-            col_s1, col_s2, col_s3 = st.columns(3)
-            col_s1.metric("Current Sentiment", f"{curr_sent:.2f}")
-            col_s2.metric("24h Price Action", f"{pct_diff:.2f}%")
-            col_s3.metric("Data Volume (Confidence)", f"{len(t_arts)} headlines")
-            
+                # 3. Apply the custom UI styling
+                fig_strat.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", 
+                    font=dict(color=c_text, size=12, family="Courier New, monospace"),
+                    margin=dict(l=40, r=40, t=20, b=40), xaxis_rangeslider_visible=False,
+                    height=350,
+                    title=dict(text=f"{target} - 5 Day Price Action", font=dict(color=c_subtext, size=14))
+                )
+                fig_strat.update_xaxes(showgrid=False, tickfont=dict(color=c_text))
+                fig_strat.update_yaxes(showgrid=True, gridcolor=c_grid, tickfont=dict(color=c_text))
+                
+                # 4. Render it flawlessly
+                st.plotly_chart(fig_strat, use_container_width=True, config={'displayModeBar': False})
+                
+            else:
+                st.warning("Insufficient clean market data to generate a signal.")
         else:
             st.warning("Insufficient market data to generate a signal.")
 # ==========================================
