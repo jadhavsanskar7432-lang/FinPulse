@@ -12,7 +12,7 @@ tickers = {
 }
 
 # Your NewsAPI Key
-NEWS_API_KEY = "93c030da0080476882719c144cce4013"
+NEWS_API_KEY = "699bf2aa98aa4c30b1de1f0a9e7635ac"
 
 conn = database.get_connection()
 cursor = conn.cursor()
