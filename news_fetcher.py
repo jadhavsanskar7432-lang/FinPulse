@@ -1,15 +1,18 @@
-
-
 import json
 import datetime
 import random
 import requests
 import urllib.parse
-import database  # Connects to your brand new database.py file
+import os                      # <-- NEW: Allows computer to read system variables
+from dotenv import load_dotenv # <-- NEW: Loads your hidden .env file
+import database
+
+# 1. Load the hidden environment variables
+load_dotenv()
 
 print("🌍 INGESTION FEED: Initializing Dual-Stream Pipeline...")
 
-# 1. Configuration & Scope
+# Configuration & Scope
 tickers = {
     "AAPL": "Apple", 
     "MSFT": "Microsoft", 
@@ -19,27 +22,29 @@ tickers = {
     "KOTAKBANK.NS": "Kotak Mahindra"
 }
 
-# Pick a random ticker to update on this loop cycle
 selected_ticker = random.choice(list(tickers.keys()))
 company_name = tickers[selected_ticker]
 
-NEWS_API_KEY = "93c030da0080476882719c144cce4013"
+# 2. Grab the key securely from the .env file instead of hardcoding it
+NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+
+if not NEWS_API_KEY:
+    print("❌ FATAL ERROR: API Key missing. Please check your .env file.")
+    exit()
 
 print(f"📡 API GATEWAY: Pinging NewsAPI for official [{company_name}] financial headlines...")
 
 selected_stories = [] 
 
 try:
-    # Calculate exactly today and 2 days ago for a strict real-time window
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     yesterday = (datetime.datetime.now() - datetime.timedelta(days=2)).strftime('%Y-%m-%d')
-    
-    # --- THE STRICT FINANCIAL FILTER ---
-    # Force the API to only return articles that mention the company AND a finance keyword
-    raw_query = f'("{company_name}" OR "{selected_ticker}") AND (stock OR shares OR earnings OR revenue OR dividend OR market)'
+    trusted_domains = "finance.yahoo.com,reuters.com,cnbc.com,marketwatch.com,bloomberg.com,seekingalpha.com,fool.com,investors.com,wsj.com,ft.com"
+    raw_query = f'("{company_name}" OR "{selected_ticker}") AND (stock OR shares OR earnings OR revenue OR dividend) -deal -sale -discount -coupon -shipping'
     strict_query = urllib.parse.quote(raw_query)
     
-    url = f"https://newsapi.org/v2/everything?q={strict_query}&language=en&from={yesterday}&to={today}&sortBy=publishedAt&apiKey={NEWS_API_KEY}"
+    # 3. BUG FIX: Merged the two URLs into one master query that respects domains AND dates
+    url = f"https://newsapi.org/v2/everything?q={strict_query}&domains={trusted_domains}&language=en&from={yesterday}&to={today}&sortBy=publishedAt&pageSize=20&apiKey={NEWS_API_KEY}"
     
     response = requests.get(url, timeout=5)
     news_data = response.json()
@@ -52,13 +57,9 @@ try:
             summary = article.get("description", "")
             
             # --- THE STRICT RELEVANCE BARRICADE ---
-            # Convert everything to lowercase for easy matching
             search_pool = f"{title} {summary}".lower()
             
-            # Only proceed if the company name OR ticker is actually in the headline/summary
             if company_name.lower() in search_pool or selected_ticker.lower() in search_pool:
-                
-                # Extract the actual publish time from NewsAPI
                 raw_time = article.get("publishedAt", datetime.datetime.now().isoformat())
                 clean_time = raw_time.replace("T", " ").replace("Z", "")[:19]
 
@@ -91,7 +92,6 @@ try:
     cursor = conn.cursor()
     
     new_inserts = 0
-    # Loop through our bulk list and insert them all
     for story in selected_stories:
         cursor.execute('''
             INSERT OR IGNORE INTO market_news (ticker, title, summary, url, time_published)
