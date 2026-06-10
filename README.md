@@ -1,66 +1,47 @@
-# ⚡ FinPulse Terminal Core
-**High-Frequency Financial News Sentiment & Market Correlation Engine**
+# ⚡ FinPulse Terminal
+**Democratizing Quant-Level Market Insights for the Retail Trader**
 
-![System State](https://img.shields.io/badge/System%20State-Active%20Enterprise%20Engine-10b981?style=for-the-badge)
-![Python](https://img.shields.io/badge/Python-3.9+-blue?style=for-the-badge)
-![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?style=for-the-badge)
-![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?style=for-the-badge)
+![Python](https://img.shields.io/badge/Python-3.9%2B-blue?style=for-the-badge&logo=python)
+![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B?style=for-the-badge&logo=streamlit)
+![SQLite](https://img.shields.io/badge/SQLite-Database-003B57?style=for-the-badge&logo=sqlite)
+![NLTK](https://img.shields.io/badge/NLTK-VADER_Sentiment-brightgreen?style=for-the-badge)
 
-**Developer:** Sanskar Jadhav  
-**Portfolio:** [Visit My Website](INSERT_YOUR_WEBSITE_LINK_HERE)
+FinPulse is a professional-grade, zero-latency financial terminal designed to bridge the information asymmetry gap in modern markets. It provides high-frequency news ingestion, live market pricing, and automated technical divergence detection within a sleek, terminal-style interface.
 
-## 📖 Overview
-FinPulse is a local, end-to-end data engineering pipeline and interactive terminal dashboard designed to ingest live global financial news, score it using Natural Language Processing (NLP), and visually correlate the resulting sentiment index against real-time stock market price action.
+---
 
-Built to handle live data streams, this project demonstrates full-stack data engineering capabilities including REST API integration, data cleaning, relational database architecture, local AI processing, and advanced UI/UX state management.
+## 🚀 Core Features
+
+### 1. Data Pipeline & Backend
+* **Targeted Ingestion Engine:** Utilizes strict boolean query logic (`-sale -deal`) and domain whitelisting to block e-commerce noise and pull only high-value corporate news via REST APIs.
+* **Zero-Latency RAM Caching:** Leverages Streamlit `@st.cache_data` with strict Time-To-Live (TTL) protocols to serve market data instantly from memory, bypassing API rate limits.
+* **Asynchronous Dual-Stream Integration:** Seamlessly merges slow-moving textual data (NewsAPI/NewsData) with millisecond-live market tape (`yfinance`) into a persistent SQLite database.
+
+### 2. AI & Sentiment Analytics
+* **Lexicon-Based NLP Scoring:** Integrates NLTK's VADER sentiment reasoner for localized, high-speed scoring of short-form financial headlines, avoiding the latency and cost of cloud-based LLMs.
+* **Algorithmic Trend Smoothing:** Applies a 3-period Rolling Moving Average (via Pandas) to raw sentiment scores to filter daily media noise and reveal macroscopic momentum.
+
+### 3. Strategy & Decision Support
+* **Rule-Based Decision Engine:** Evaluates price-to-sentiment divergence to generate actionable **STRONG BUY / HOLD / SELL** algorithmic signals.
+* **Market Breadth Aggregation:** A dynamic portfolio-level engine that tallies active signals into a Donut Chart, providing an instant "Bird's Eye View" of macro market health.
+* **Relative Performance Analysis:** A normalized multi-select charting tool that converts raw stock prices into Percentage Change, allowing accurate performance overlays across disparate assets.
+
+### 4. Security & DevOps
+* **Credential Decoupling:** API keys are isolated using `.env` environment variables.
+* **Production-Ready Repo:** Strict `.gitignore` implementation prevents leakage of credentials and local database bloat.
 
 ---
 
 ## 🛠️ Technology Stack
-This project was built using a robust, data-driven Python stack focused on Object-Oriented principles and efficient exception handling:
-
-* **Backend & Data Pipeline:** Python
-* **Database:** SQLite (built-in relational data storage)
-* **Frontend UI:** Streamlit (custom-styled with dynamic CSS)
-* **Natural Language Processing (NLP):** NLTK (VADER Lexicon)
-* **Data Visualization:** Plotly (Interactive Spline & Candlestick charts)
-* **Market Data APIs:** `yfinance` (Yahoo Finance live OHLC data)
-* **News Ingestion APIs:** NewsAPI (High-fidelity boolean queries)
-* **Data Manipulation:** Pandas & NumPy
+* **Backend:** Python, SQLite3
+* **Data Processing:** Pandas, NLTK (VADER), yfinance, Requests
+* **Frontend / UI:** Streamlit, Plotly Express & Graph Objects, Custom CSS (Glassmorphism & Terminal Aesthetics)
 
 ---
 
-## 🚀 Key Engineering Features
+## ⚙️ Installation & Setup
 
-### 1. Decoupled Pipeline Architecture
-Instead of a single monolithic script, the system relies on a Master Launcher (`launcher.py`) that orchestrates parallel background processes. Data ingestion, AI processing, and the frontend UI operate independently, preventing UI freezing and ensuring continuous background data flows.
-
-### 2. High-Fidelity Data Ingestion
-Integrates with NewsAPI using strict boolean search logic and `qInTitle` parameters to completely eliminate "Full-Text Bleed" and data noise, ensuring target asset relevance. Includes automated bulk-loading for historical charting.
-
-### 3. Enterprise Database Layer
-Utilizes an SQLite relational database to enable ACID-compliant concurrent writes from the NLP worker and high-speed reads from the Streamlit dashboard via optimized SQL queries.
-
-### 4. Local AI Sentiment Engine
-Utilizes NLTK's VADER (Valence Aware Dictionary and sEntiment Reasoner). The engine parses complex sentence structures, understands negations, and applies mathematical heuristics to grade financial context entirely locally.
-
-### 5. Reactive UI & State Persistence
-Features a custom-styled, terminal-inspired interface. Includes a dynamic Light/Dark Mode engine that injects CSS directly into Pandas rendering and uses URL Query Parameters to persist UI state across hard browser reloads.
-
-### 6. Real-Time Market Correlation
-Integrates natively with the Yahoo Finance API to pull live OHLC (Open, High, Low, Close) candlestick data, plotted synchronously alongside the aggregated AI Sentiment Index.
-
----
-
-## 🗂️ Project Structure
-
-```text
-📁 finpulse_project/
-│
-├── launcher.py               # Master orchestration script
-├── news_fetcher.py           # Background REST API ingestion worker
-├── sentiment_analyzer.py     # Local NLP VADER scoring worker
-├── database.py               # SQLite connection and schema manager
-├── dashboard.py              # Streamlit frontend & charting engine
-├── README.md                 # Project documentation
-└── finpulse.db               # Local SQLite database (Auto-generated on launch)
+**1. Clone the Repository**
+```bash
+git clone [https://github.com/yourusername/finpulse-terminal.git](https://github.com/yourusername/finpulse-terminal.git)
+cd finpulse-terminal
