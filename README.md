@@ -10,7 +10,7 @@ FinPulse is a professional-grade, zero-latency financial terminal designed to br
 
 ---
 
-## 🚀 Core Features
+##  Core Features
 
 ### 1. Data Pipeline & Backend
 * **Targeted Ingestion Engine:** Utilizes strict boolean query logic (`-sale -deal`) and domain whitelisting to block e-commerce noise and pull only high-value corporate news via REST APIs.
@@ -32,14 +32,14 @@ FinPulse is a professional-grade, zero-latency financial terminal designed to br
 
 ---
 
-## 🛠️ Technology Stack
+##  Technology Stack
 * **Backend:** Python, SQLite3
 * **Data Processing:** Pandas, NLTK (VADER), yfinance, Requests
 * **Frontend / UI:** Streamlit, Plotly Express & Graph Objects, Custom CSS (Glassmorphism & Terminal Aesthetics)
 
 ---
 
-## ⚙️ Installation & Setup
+##  Installation & Setup
 
 **1. Clone the Repository**
 ```bash
