@@ -43,5 +43,4 @@ FinPulse is a professional-grade, zero-latency financial terminal designed to br
 
 **1. Clone the Repository**
 ```bash
-git clone [https://github.com/yourusername/finpulse-terminal.git](https://github.com/yourusername/finpulse-terminal.git)
-cd finpulse-terminal
+git clone [https://github.com/jadhavsanskar7432-lang/FinPulse.git]
