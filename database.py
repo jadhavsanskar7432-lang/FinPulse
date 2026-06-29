@@ -10,6 +10,7 @@ DB_CONFIG = {
     "dbname":   os.getenv("PG_DATABASE", "finpulse"),
     "user":     os.getenv("PG_USER", "postgres"),
     "password": os.getenv("PG_PASSWORD", ""),
+    "sslmode":  os.getenv("PG_SSLMODE", "prefer"),
 }
 def get_connection():
     """Returns a new PostgreSQL connection with RealDictCursor for dict-style row access."""
