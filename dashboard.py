@@ -21,8 +21,6 @@ import yfinance as yf
 
 import database
 from validator import get_validation_summary, validate_all
-# pyrefly: ignore [missing-import]
-from transformers import pipeline
 from config import TICKERS, SECTORS, ALL_TICKER_SYMBOLS, SECTOR_ICONS, get_display_name, get_company_name, get_logo_url
 from logo_data import get_ticker_logo_html
 
@@ -141,31 +139,6 @@ st.markdown(
 def fetch_validation_data():
     return get_validation_summary()
 
-@st.cache_resource
-def load_sentiment_engine():
-    _real_stdout = sys.stdout
-    _real_stderr = sys.stderr
-    try:
-        sys.stdout = io.StringIO()
-        sys.stderr = io.StringIO()
-        model = pipeline("sentiment-analysis", model="ProsusAI/finbert")
-    finally:
-        sys.stdout = _real_stdout
-        sys.stderr = _real_stderr
-    return model
-
-finbert = load_sentiment_engine()
-
-def get_finbert_score(headline):
-    try:
-        result = finbert(headline)[0]
-        label = result['label']
-        score = result['score']
-        if label == 'positive': return float(score)
-        elif label == 'negative': return float(-score)
-        else: return 0.0
-    except Exception:
-        return 0.0
 
 @st.cache_data(ttl=30)
 def fetch_database_records():
