@@ -1041,6 +1041,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-
-time.sleep(10)
-st.rerun()
