@@ -32,9 +32,11 @@ import urllib.parse
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8')
 
+# pyrefly: ignore [missing-import]
 import feedparser
 import requests
-from bs4 import BeautifulSoup
+# pyrefly: ignore [missing-import]
+from bs4 import BeautifulSoup   
 
 from config import TICKERS
 

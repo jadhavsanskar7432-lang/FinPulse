@@ -1,6 +1,8 @@
 import database
 import os
-from transformers import pipeline
+# pyrefly: ignore [missing-import]
+from transformers import pipeline   
+# pyrefly: ignore [missing-import]
 from transformers.utils import logging as hf_logging
 
 # 🛑 CRITICAL WINDOWS FIX: Disable progress bars to prevent subprocess crashes
