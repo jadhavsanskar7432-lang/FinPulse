@@ -20,6 +20,15 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
+      - name: Initialize database
+        env:
+          PG_HOST: ${{ secrets.PG_HOST }}
+          PG_PORT: ${{ secrets.PG_PORT }}
+          PG_DATABASE: ${{ secrets.PG_DATABASE }}
+          PG_USER: ${{ secrets.PG_USER }}
+          PG_PASSWORD: ${{ secrets.PG_PASSWORD }}
+          PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+        run: python -c "import database; database.init_db()"
 
       - name: Fetch news
         env:
