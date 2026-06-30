@@ -34,6 +34,13 @@ def init_db():
             source TEXT DEFAULT 'newsapi'
         )
     ''')
+    cursor.execute('''
+        ALTER TABLE market_news ADD COLUMN IF NOT EXISTS url_fingerprint VARCHAR(32);
+    ''')
+    cursor.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_url_fingerprint
+            ON market_news(url_fingerprint) WHERE url_fingerprint IS NOT NULL;
+    ''')
     conn.commit()
     conn.close()
     print("✅ DATABASE SYSTEM: 'market_news' table is ready on PostgreSQL.")
