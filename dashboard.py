@@ -640,13 +640,16 @@ with tab_home:
         st.info("No active records.")
     else:
         for item in filtered_articles[:3]:
-            score = item.get("score", 0) if item.get("score") is not None else 0.0
+            raw_score = item.get("score")
+            is_scored = raw_score is not None
+            score = raw_score if is_scored else 0.0
             color = "#53ff04" if score > 0.05 else ("#ef4444" if score < -0.05 else "#c8ff00")
+            score_label = f"{score:+.2f}" if is_scored else "PENDING"
             source_badge = get_source_badge(item.get("source", ""))
             st.markdown(
                 f"""
                 <div class="terminal-card" style="border-left: 4px solid {color} !important;">
-                    <span style="color:{color}; font-size:11px; font-weight:bold;">SCORE: {score:.2f} | {item.get('ticker')}</span>{source_badge}
+                    <span style="color:{color}; font-size:11px; font-weight:bold;">SCORE: {score_label} | {item.get('ticker')}</span>{source_badge}
                     <h5 style="margin-top:5px; margin-bottom:0px;"><a class="clickable-headline" href="{item.get('url', '#')}" target="_blank">{item.get('title')}</a></h5>
                 </div>
                 """, unsafe_allow_html=True

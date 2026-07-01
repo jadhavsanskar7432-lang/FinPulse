@@ -106,40 +106,45 @@ def process_unscored_news():
                 total_processed += 1
                 print(f"   🔹 ID {row['id']} → [{sentiment_label}] (Score: {compound_score:+.2f})")
 
+            conn.commit()   # commit per batch -- a later failure won't lose earlier progress
             print(f"   📊 Batch {i // batch_size + 1} complete ({len(batch)} records)")
 
-        conn.commit()
         print(f"✅ NLP ENGINE: FinBERT analysis complete. Scored {total_processed} records.")
 
     except Exception as e:
+        import traceback
         print(f"❌ NLP ENGINE ERROR: {e}")
+        traceback.print_exc()
+        raise
     finally:
         if 'conn' in locals():
             conn.close()
-    if __name__ == "__main__":
-        process_unscored_news()
- 
-        # ── Auto-trigger validator after scoring ────────────────────
-        # Reads freshly-scored articles from DB, validates each ticker
-        # against Moneycontrol, Tickertape, TradingView, writes to
-        # analyst_validation table for the dashboard to display.
-        try:
-            from validator import validate_all
-            import database
- 
-            conn   = database.get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT ticker, score FROM market_news WHERE score IS NOT NULL"
-            )
-            rows = [dict(r) for r in cursor.fetchall()]
-            conn.close()
- 
-            if rows:
-                print(f"\n[Validator] Auto-triggering for {len(set(r['ticker'] for r in rows))} tickers...")
-                validate_all(rows)
-            else:
-                print("[Validator] No scored rows found — skipping validation.")
- 
-        except Exception as val_err:
-            print(f"[Validator] Auto-trigger error (non-fatal): {val_err}")
+
+
+if __name__ == "__main__":
+    process_unscored_news()
+
+    # ── Auto-trigger validator after scoring ────────────────────
+    # Reads freshly-scored articles from DB, validates each ticker
+    # against Moneycontrol, Tickertape, TradingView, writes to
+    # analyst_validation table for the dashboard to display.
+    try:
+        from validator import validate_all
+        import database
+
+        conn   = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT ticker, score FROM market_news WHERE score IS NOT NULL"
+        )
+        rows = [dict(r) for r in cursor.fetchall()]
+        conn.close()
+
+        if rows:
+            print(f"\n[Validator] Auto-triggering for {len(set(r['ticker'] for r in rows))} tickers...")
+            validate_all(rows)
+        else:
+            print("[Validator] No scored rows found — skipping validation.")
+
+    except Exception as val_err:
+        print(f"[Validator] Auto-trigger error (non-fatal): {val_err}")

@@ -209,25 +209,87 @@ def _url_fingerprint(url: str) -> str:
         return hashlib.md5(url.encode()).hexdigest()
 
 
+# Tickers whose bare symbol/company_name collides with common English words,
+# place names, unrelated people's names, or other entities. For these, a bare
+# ticker or company_name match is NOT enough — we additionally require the
+# ticker word to co-occur with finance/business context, since company_name
+# in config is often just the bare word (e.g. "Trent") with no disambiguating
+# suffix like "Ltd". Add to this dict as new false-positive collisions turn up.
+AMBIGUOUS_TICKER_CONTEXT = {
+    "trent": [
+        # generic finance/market vocabulary
+        "share", "shares", "stock", "stocks", "nse", "bse", "revenue",
+        "profit", "dividend", "bonus", "quarter", "q1", "q2", "q3", "q4",
+        "results", "earnings", "ipo", "pat", "ebitda", "market cap",
+        "brokerage", "target price", "price target", "52-week", "52 week", "ex-dividend",
+        "ex-bonus", "ltd", "limited", "sensex", "nifty",
+        # Trent Ltd's own retail brands / parent group — near-zero false
+        # positive risk since unrelated "Trent" mentions never include these
+        "zudio", "westside", "tata group", "noel tata", "growth", "retailer", "apparel",
+    ],
+    "abb": ["share", "shares", "stock", "nse", "bse", "revenue", "profit",
+            "dividend", "quarter", "results", "earnings", "ltd", "limited",
+            "india"],
+}
+AMBIGUOUS_TICKERS = set(AMBIGUOUS_TICKER_CONTEXT.keys())
+EXCLUSION_KEYWORDS = {
+    "m&m": ["m&m's", "m&ms candy"],
+}
+
+
+def _word_in_text(word: str, text: str) -> bool:
+    """Whole-word (word-boundary) match — avoids matching substrings inside other words."""
+    if not word:
+        return False
+    return re.search(r'\b' + re.escape(word) + r'\b', text) is not None
+
+
 def _is_relevant(story: dict) -> bool:
     """
     Returns True if the article actually relates to the ticker/company.
     Checks title, summary, AND URL to catch articles where the ticker
     appears in the URL but not the body (common with Yahoo/Finnhub).
+
+    Uses word-boundary matching (not bare substring) to avoid partial-word
+    false positives. For tickers in AMBIGUOUS_TICKER_CONTEXT (short/common
+    symbols like "TRENT" that collide with unrelated nouns, place names, or
+    people's names), a bare ticker/company_name match is not trusted alone —
+    the ticker word must additionally co-occur with finance/business context
+    (e.g. "shares", "revenue", "Q4 results") or one of the company's known
+    brand names. This is necessary because company_name in config is often
+    just the bare word (e.g. "Trent") with no disambiguating suffix, so it
+    can't be used as a standalone discriminator for these tickers.
+
+    Additionally, for tickers in EXCLUSION_KEYWORDS, a hard override drops
+    the story if an unrelated-brand phrase is present (e.g. "M&M's" the
+    candy vs. "M&M" the stock ticker), regardless of any other context.
     """
-    ticker      = story.get("ticker", "").replace(".NS", "").replace(".BO", "").lower()
-    company     = story.get("company_name", "").lower()
+    raw_ticker  = story.get("ticker", "").replace(".NS", "").replace(".BO", "").lower()
+    company     = story.get("company_name", "").lower().strip()
     search_pool = (
         f"{story.get('title', '')} {story.get('summary', '')}".lower()
     )
     url = story.get("url", "").lower()
 
-    return (
-        ticker in search_pool
-        or (company and company in search_pool)
-        or ticker in url
-    )
+    # Hard override: unrelated brand/entity collision. Checked before anything
+    # else — a story matching an exclusion phrase is dropped regardless of
+    # what else it contains.
+    if raw_ticker in EXCLUSION_KEYWORDS:
+        if any(phrase in search_pool for phrase in EXCLUSION_KEYWORDS[raw_ticker]):
+            return False
 
+    ticker_matches_text  = _word_in_text(raw_ticker, search_pool)
+    company_matches_text = bool(company) and _word_in_text(company, search_pool)
+    ticker_matches_url   = _word_in_text(raw_ticker, url)
+
+    if raw_ticker in AMBIGUOUS_TICKERS:
+        base_mentioned = ticker_matches_text or company_matches_text or ticker_matches_url
+        if not base_mentioned:
+            return False
+        context_words = AMBIGUOUS_TICKER_CONTEXT[raw_ticker]
+        return any(_word_in_text(kw, search_pool) for kw in context_words)
+
+    return ticker_matches_text or company_matches_text or ticker_matches_url
 
 def _normalize_one(story: dict) -> dict | None:
     """
