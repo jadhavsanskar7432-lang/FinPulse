@@ -6,7 +6,8 @@ import requests
 from collections import Counter
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry  # type: ignore[import]
-from bs4 import BeautifulSoup
+# pyrefly: ignore [missing-import]
+from bs4 import BeautifulSoup   
 import database
 
 # ══════════════════════════════════════════════
@@ -14,11 +15,13 @@ import database
 # ══════════════════════════════════════════════
 
 logging.basicConfig(
-    filename="validator.log",
-    filemode="a",
     format="%(asctime)s [%(levelname)s] %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    level=logging.INFO
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("validator.log", mode="a"),
+        logging.StreamHandler()
+    ]
 )
 log = logging.getLogger("validator")
 
@@ -39,6 +42,7 @@ HEADERS = {
 
 REQUEST_TIMEOUT     = 15
 INTER_REQUEST_DELAY = 1
+VALIDATION_STALE_HOURS = 24   # skip re-validating a ticker if it was checked within this window
 
 # Yahoo Finance analyst recommendation mean → label mapping
 # Values from yfinance: 1.0=Strong Buy, 2.0=Buy, 3.0=Hold, 4.0=Sell, 5.0=Strong Sell
@@ -128,6 +132,20 @@ def ensure_validation_table():
         log.warning(f"DB setup warning: {e}")
 
 
+def _get_last_updated_map() -> dict:
+    """Returns {ticker: last_updated datetime} for every ticker currently in analyst_validation."""
+    try:
+        conn   = database.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT ticker, last_updated FROM analyst_validation")
+        rows = cursor.fetchall()
+        conn.close()
+        return {r["ticker"]: r["last_updated"] for r in rows}
+    except Exception as e:
+        log.warning(f"Could not fetch last_updated map: {e}")
+        return {}
+
+
 # ══════════════════════════════════════════════
 # SIGNAL HELPERS
 # ══════════════════════════════════════════════
@@ -179,7 +197,8 @@ def fetch_yahoo_finance_signal(ticker: str) -> dict:
     }
 
     try:
-        import yfinance as yf
+        # pyrefly: ignore [missing-import]
+        import yfinance as yf   
         stock = yf.Ticker(ticker)
         info  = stock.info
 
@@ -656,11 +675,21 @@ def validate_all(articles: list[dict]) -> list[dict]:
         if score is not None:
             ticker_data[t]["scores"].append(float(score))
 
+    last_updated_map = _get_last_updated_map()
+    stale_cutoff = datetime.datetime.now() - datetime.timedelta(hours=VALIDATION_STALE_HOURS)
+
     results = []
+    skipped = 0
     total   = len(ticker_data)
-    log.info(f"Starting validation for {total} tickers...")
+    log.info(f"Starting validation for {total} tickers (staleness window: {VALIDATION_STALE_HOURS}h)...")
 
     for i, (ticker, data) in enumerate(ticker_data.items(), 1):
+        last_checked = last_updated_map.get(ticker)
+        if last_checked and last_checked > stale_cutoff:
+            log.info(f"[{i}/{total}] {ticker} — skipped (last validated {last_checked}, still fresh)")
+            skipped += 1
+            continue
+
         scores    = data["scores"]
         avg_score = (sum(scores) / len(scores)) if scores else 0.0
         log.info(f"[{i}/{total}] {ticker} — avg FinBERT: {avg_score:+.3f} ({len(scores)} articles)")
@@ -668,7 +697,7 @@ def validate_all(articles: list[dict]) -> list[dict]:
         if i < total:
             time.sleep(INTER_REQUEST_DELAY)
 
-    log.info(f"Done. {len(results)}/{total} tickers validated.")
+    log.info(f"Done. {len(results)}/{total} tickers validated ({skipped} skipped as still fresh).")
     return results
 
 
