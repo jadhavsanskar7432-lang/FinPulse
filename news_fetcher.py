@@ -229,7 +229,9 @@ AMBIGUOUS_TICKER_CONTEXT = {
     ],
     "abb": ["share", "shares", "stock", "nse", "bse", "revenue", "profit",
             "dividend", "quarter", "results", "earnings", "ltd", "limited",
-            "india"],
+            "india", "target price", "price target", "index", "buy call",
+            "sell call", "buy rating", "sell rating", "upgrade", "downgrade",
+            "bullish", "bearish", "brokerage", "partnership"],
 }
 AMBIGUOUS_TICKERS = set(AMBIGUOUS_TICKER_CONTEXT.keys())
 EXCLUSION_KEYWORDS = {
@@ -237,13 +239,22 @@ EXCLUSION_KEYWORDS = {
 }
 
 
+# Brand names that are distinctive enough (long, unambiguous) that matching them
+# as a prefix — even with a foreign-language suffix glued on, e.g. "Microsofttan",
+# "Microsoftov", "Nvidiaya" — carries negligible false-positive risk.
+SUFFIX_TOLERANT_BRANDS = {"microsoft", "nvidia"}
+
 def _word_in_text(word: str, text: str) -> bool:
-    """Whole-word (word-boundary) match — avoids matching substrings inside other words."""
+    """Whole-word (word-boundary) match — avoids matching substrings inside other words.
+    For a curated set of distinctive brand names, also matches when a foreign-language
+    suffix is glued directly onto the brand with no space (e.g. "Microsofttan")."""
     if not word:
         return False
-    return re.search(r'\b' + re.escape(word) + r'\b', text) is not None
-
-
+    if re.search(r'\b' + re.escape(word) + r'\b', text) is not None:
+        return True
+    if word.lower() in SUFFIX_TOLERANT_BRANDS:
+        return re.search(r'\b' + re.escape(word) + r'[a-zA-ZğüşıöçĞÜŞİÖÇ]*\b', text) is not None
+    return False
 def _is_relevant(story: dict) -> bool:
     """
     Returns True if the article actually relates to the ticker/company.
