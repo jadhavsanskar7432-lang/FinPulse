@@ -45,7 +45,6 @@ jobs:
           PG_PASSWORD: ${{ secrets.PG_PASSWORD }}
           PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
         run: python sentiment_analyzer.py
-
   validate-analysts:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -67,4 +66,4 @@ jobs:
           PG_USER: ${{ secrets.PG_USER }}
           PG_PASSWORD: ${{ secrets.PG_PASSWORD }}
           PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
-        run: python -c "from validator import validate_all; validate_all()"
+        run: python run_validator.py
