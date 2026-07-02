@@ -40,7 +40,8 @@ st.set_page_config(
 debug_conn = database.get_connection()
 debug_cursor = debug_conn.cursor()
 debug_cursor.execute("SELECT current_database(), inet_server_addr(), (SELECT COUNT(*) FROM market_news)")
-st.sidebar.code(debug_cursor.fetchone())
+result = debug_cursor.fetchone()
+print(f"🔍 DEBUG DB CHECK: {result}", flush=True)
 debug_conn.close()
 def silent_flush():
     sys.stderr.flush()
