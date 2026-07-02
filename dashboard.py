@@ -37,7 +37,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-
+debug_conn = database.get_connection()
+debug_cursor = debug_conn.cursor()
+debug_cursor.execute("SELECT current_database(), inet_server_addr(), (SELECT COUNT(*) FROM market_news)")
+st.sidebar.code(debug_cursor.fetchone())
+debug_conn.close()
 def silent_flush():
     sys.stderr.flush()
 
